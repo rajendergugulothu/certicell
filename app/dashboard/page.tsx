@@ -1,5 +1,5 @@
 import Workspace from '@/app/workspace';
-import {requireChatGPTUser} from '@/app/chatgpt-auth';
+import {requireUser} from '@/app/auth-user';
 export const dynamic='force-dynamic';
 export const metadata={title:'Workspace | CertiCell'};
-export default async function Page(){await requireChatGPTUser('/dashboard');return <Workspace/>;}
+export default async function Page(){await requireUser('/dashboard');return <Workspace/>;}

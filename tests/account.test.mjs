@@ -7,7 +7,7 @@ const sqlite=new DatabaseSync(':memory:');for(const f of fs.readdirSync('drizzle
 const database={prepare(sql){let args=[];const q={bind(...values){args=values;return q},async first(){return sqlite.prepare(sql).get(...args)||null},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:Number(r.changes)}}}};return q}};
 let user=null;
 function compile(file,req){const exports={};new Function('require','exports',ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(req,exports);return exports;}
-const api=compile('app/api/account/route.ts',name=>name==='zod'?zod:name.includes('chatgpt-auth')?{getChatGPTUser:async()=>user}:{db:()=>database});
+const api=compile('app/api/account/route.ts',name=>name==='zod'?zod:name.includes('auth-user')?{getUser:async()=>user}:{db:()=>database});
 const request=(body,method='POST',headers={})=>new Request('https://certicell.test/api/account',{method,headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
 assert.equal((await api.GET()).status,401);assert.equal((await api.POST(request({name:'Alice'}))).status,401);
 user={userId:'alice',displayName:'Identity name',email:'alice@example.test'};
@@ -25,10 +25,14 @@ assert.equal((await api.PATCH(request({name:'Bob'},'PATCH'))).status,404);
 await api.POST(request({name:'Bob',company:'Lab One'}));await api.PATCH(request({name:'Bob Updated',company:'Lab Two'},'PATCH'));
 user={...user,userId:'alice',email:'alice@example.test'};assert.equal((await (await api.GET()).json()).profile.company,'Lab One');
 assert.equal((await api.PATCH(request({name:'Alice Updated',company:'Lab Three'},'PATCH'))).status,200);a=await (await api.GET()).json();assert.equal(a.profile.name,'Alice Updated');
-let headers=new Headers();const auth=compile('app/chatgpt-auth.ts',name=>name==='next/headers'?{headers:async()=>headers}:{redirect:(path)=>{throw Error('REDIRECT '+path)}});
-assert.equal(await auth.getChatGPTUser(),null);await assert.rejects(()=>auth.requireChatGPTUser('/account'),/REDIRECT \/signin-with-chatgpt/);
-for(const path of ['https://attacker.test','//attacker.test','/\\attacker.test','/callback','/signout-with-chatgpt'])assert.equal(auth.chatGPTSignInPath(path),'/signin-with-chatgpt?return_to=%2F');
-assert.equal(auth.chatGPTSignInPath('/signup'),'/signin-with-chatgpt?return_to=%2Fsignup');
-headers=new Headers({'oai-authenticated-user-id':'alice','oai-authenticated-user-email':'alice@example.test','oai-authenticated-user-full-name':'Alice%20Walker','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
-assert.equal((await auth.requireChatGPTUser('/account')).displayName,'Alice Walker');
+let session=null;const auth=compile('app/auth-user.ts',name=>name==='next/navigation'?{redirect:(path)=>{throw Error('REDIRECT '+path)}}:{auth:async()=>session});
+assert.equal(await auth.getUser(),null);await assert.rejects(()=>auth.requireUser('/account'),/REDIRECT \/api\/auth\/signin/);
+// A session without a resolved owner must never authenticate a workspace.
+session={user:{email:'alice@example.test'}};assert.equal(await auth.getUser(),null);
+session={user:{owner:'github:1',name:null}};assert.equal(await auth.getUser(),null);
+for(const path of ['https://attacker.test','//attacker.test','/\\attacker.test','/api/auth/signout'])assert.equal(auth.signInPath(path),'/api/auth/signin?callbackUrl=%2F');
+assert.equal(auth.signInPath('/signup'),'/api/auth/signin?callbackUrl=%2Fsignup');
+assert.equal(auth.signOutPath('/signin'),'/api/auth/signout?callbackUrl=%2Fsignin');
+session={user:{owner:'github:1',email:'alice@example.test',name:'Alice Walker'}};
+const resolved=await auth.requireUser('/account');assert.equal(resolved.displayName,'Alice Walker');assert.equal(resolved.userId,'github:1');
 console.log('Account and authentication checks passed: registration, repeat registration, validation, profile editing, tenant isolation, verified email, sign-in redirects, and redirect safety.');

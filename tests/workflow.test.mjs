@@ -9,8 +9,10 @@ let user=null;
 const files=new Map();const bucket={async put(key,bytes){files.set(key,new Uint8Array(bytes))},async get(key){const bytes=files.get(key);return bytes?{body:bytes}:null},async delete(key){files.delete(key)}};
 let storage;
 
-function route(file){const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports={};const req=name=>name==='cloudflare:workers'?{env:{BUCKET:bucket}}:name.includes('storage')?storage:name.includes('chatgpt-auth')?{getChatGPTUser:async()=>user}:name.includes('grading')?grading:{db:()=>database};new Function('require','exports',source)(req,exports);return exports;}
-storage=route('lib/storage.ts');
+function route(file){const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports={};const req=name=>name==='@vercel/blob'?blobStub:name.includes('storage')?storage:name.includes('auth-user')?{getUser:async()=>user}:name.includes('grading')?grading:{db:()=>database};new Function('require','exports',source)(req,exports);return exports;}
+const blobStub={put:async()=>({}),del:async()=>{},head:async()=>({})};
+// Exercise the real readLimited(); swap only the blob-backed bucket.
+storage=route('lib/storage.ts');storage={...storage,bucket:()=>bucket};
 const reports=route('app/api/reports/route.ts');
 const api=route('app/api/workspace/route.ts'),verify=route('app/api/verify/route.ts');
 const post=(body,headers={})=>api.POST(new Request('https://certicell.test/api/workspace',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)}));
