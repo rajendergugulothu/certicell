@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {assess,testSchema,intakeSchema,digest} from '../lib/grading.ts';
+const test={measured:80,temperature:25,resistance:12,imbalance:25,cycles:600,lab:'Test lab',reference:'LAB-001',testedAt:'2026-09-01',safety:'clear',notes:''};
+assert.equal(assess(100,test).grade,'A');
+assert.equal(assess(100,{...test,measured:79.9}).grade,'B');
+assert.equal(assess(100,{...test,measured:69.9}).grade,'C');
+assert.equal(assess(100,{...test,safety:'flagged'}).grade,'Hold');
+assert.equal(assess(100,{...test,imbalance:101}).grade,'Hold');
+assert.throws(()=>assess(100,{...test,measured:106}));
+assert.equal(testSchema.safeParse({...test,temperature:50}).success,false);
+assert.equal(testSchema.safeParse({...test,testedAt:'2099-01-01'}).success,false);
+assert.equal(intakeSchema.safeParse({serial:'AB',customer:'CD',batch:'EF',chemistry:'LFP',nominal:0}).success,false);
+assert.equal((await digest('abc')),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+console.log('10 grading, validation, and integrity checks passed.');

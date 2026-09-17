@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789246138758,
+      "tag": "0000_sloppy_ma_gnuci",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789339841786,
+      "tag": "0001_certain_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789340457094,
+      "tag": "0002_lumpy_marvel_zombies",
+      "breakpoints": true
+    }
+  ]
+}
