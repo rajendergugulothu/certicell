@@ -1,0 +1,7 @@
+import {demoAccounts} from '@/lib/demo-accounts';
+import {AuthShell} from '@/app/auth-shell';
+import Workspace from '@/app/workspace';
+import {ArrowRight,Users} from 'lucide-react';
+export const dynamic='force-dynamic';
+export const metadata={title:'Demo accounts | CertiCell'};
+export default async function Page({searchParams}:{searchParams:Promise<{account?:string}>}){const {account}=await searchParams;const selected=demoAccounts.find(d=>d.id===account);if(selected)return <Workspace demoAccount={selected}/>;return <AuthShell><span className="auth-emblem"><Users size={27}/></span><p className="eyebrow">SAMPLE ACCOUNTS</p><h1>Explore CertiCell.</h1><p className="auth-intro">Choose a demo view. Each uses the same illustrative dataset, with a different starting screen.</p>{account&&<p role="alert" className="form-error">That demo account was not found. Choose one below.</p>}<div className="demo-choices">{demoAccounts.map(d=><a key={d.id} href={'/demo?account='+d.id}><div><strong>{d.name}</strong><p>{d.description}</p></div><ArrowRight size={20}/></a>)}</div><p className="auth-access-note">Demo access is read-only and requires no separate demo password. It does not create an identity, access private battery records, or grant real reviewer permissions. The site’s private access restrictions still apply.</p><a className="auth-switch" href="/signin">Sign in to your real workspace</a></AuthShell>}
