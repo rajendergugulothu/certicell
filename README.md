@@ -1,61 +1,174 @@
 # CertiCell
 
-Responsive second-life battery assessment workspace based on the supplied CertiCell project documentation.
+A second-life battery assessment workspace. CertiCell records battery packs and
+their laboratory measurements, derives a provisional health grade, and issues
+tamper-evident certificates that anyone can verify from a QR code or serial
+lookup.
 
-## Implemented
+> **This is a functional pilot, not accredited battery certification.** See
+> [Scope and limitations](#scope-and-limitations) before relying on any grade it
+> produces.
 
-- Account-isolated battery, customer, and batch records backed by Cloudflare D1.
-- Single-pack and atomic CSV batch intake (up to 50 packs / 200 KB per request).
-- Laboratory measurement capture, capacity-retention calculation, provisional grades, safety holds, and review acknowledgement.
-- Immutable issued snapshots with SHA-256 integrity checks, QR verification, printable PDF layouts, and irreversible revocation.
-- Search, status filters, customer portfolios, CSV export, sample workspace, and mobile sidebar.
-- Server-side authorization, prepared SQL, cross-site mutation rejection, input validation, unique serials per account, and audit events.
+## What it does
 
-The site is deployed privately. Verification is unauthenticated at the application route but remains subject to the site's access policy. External verification needs an explicitly approved public audience. Each signed-in account owns a separate workspace; this version does not provide organization membership or multi-reviewer roles.
+- **Intake** — register packs individually or via atomic CSV batch (up to 50
+  packs / 200 KB per request), with serials unique per account.
+- **Testing** — capture lab measurements (capacity, temperature, resistance,
+  cell imbalance, cycles, rig and calibration references) and 2–20 repeated
+  capacity runs.
+- **Grading** — compute capacity retention and assign a provisional grade.
+- **Review and issuance** — require complete evidence plus reviewer notes
+  (10–1500 characters) before a certificate can be issued.
+- **Certificates** — issuance freezes an immutable snapshot with a SHA-256
+  digest, the selected lab report fingerprint, reviewer identity, test
+  conditions, and repeat summary. Snapshots are printable and can be revoked,
+  irreversibly.
+- **Public verification** — `/verify` resolves a certificate without
+  authentication and returns a limited numerical summary. Original reports,
+  reviewer identity and notes, and equipment details stay private to the record
+  owner.
+- **Workspace** — search, status filters, customer portfolios, CSV export,
+  audit events, and a read-only demo mode.
 
-## Scientific and operational boundary
+### Grade bands
 
-This is a functional pilot platform, not accredited battery certification. Provisional grades A >=80%, B >=70%, C <70% and holds (reported safety flag / imbalance >100 mV) are explicitly illustrative. Capacity ratio is not a remaining-life estimate. No UL, EN, EPR, or Battery Passport compliance is claimed. Commercial issuance requires chemistry-specific protocol validation, controlled lab testing, qualified independent reviewers, standards review, and accreditation where appropriate.
+| Grade | Condition |
+| --- | --- |
+| A | Capacity retention ≥ 80% |
+| B | Capacity retention ≥ 70% |
+| C | Capacity retention < 70% |
+| Hold | Safety flag reported, or cell imbalance > 100 mV |
 
-CSV intake uses the documented schema; direct CAN/Modbus ingestion and arbitrary manufacturer BMS parsers require hardware-specific integrations. Data collection currently captures measurements and lab references; original PDF lab reports are stored in private R2 objects with D1 metadata and SHA-256 fingerprints. The roadmap's marketplace, compliance reporting, billing, and insurer APIs are future phases.
+These bands are illustrative. Capacity ratio is not a remaining-life estimate.
 
-## Development
+## Tech stack
 
-Use the pinned pnpm version and existing lockfile. Run `pnpm dev` in a supported development environment, `pnpm build` for Worker and client output, and `pnpm db:generate` after schema changes. Production hosting manages D1 through `.openai/hosting.json` and applies the generated Drizzle migrations. No application API keys are required. R2 uses the logical BUCKET binding managed by Sites.
+- [Next.js](https://nextjs.org) 16 (App Router) on [vinext](https://www.npmjs.com/package/vinext) + Vite 8
+- React 19, Tailwind CSS 4, shadcn-style UI components
+- Cloudflare Workers runtime, D1 (SQLite) for data, R2 for lab report PDFs
+- [Drizzle ORM](https://orm.drizzle.team) + drizzle-kit for schema and migrations
+- Zod for request validation
 
-Dispatch-provided ChatGPT identity headers authenticate API requests. Never trust arbitrary identity headers outside that controlled deployment boundary. A self-hosted deployment must supply a trusted authentication proxy before exposing authenticated routes.
+## Getting started
 
-## Verification
+Requires Node.js ≥ 22.13 and pnpm 11.25 (pinned via `packageManager`).
 
-- `node --experimental-strip-types tests/grading.test.mjs`
-- `node --experimental-strip-types tests/workflow.test.mjs`
-- `pnpm exec tsc --noEmit`
-- `pnpm build`
+```bash
+pnpm install --frozen-lockfile
+pnpm dev
+```
 
-Workflow tests invoke the actual route implementations against an in-memory SQLite adapter with a mocked trusted identity. They cover ownership isolation, authentication, atomic intake rollback, holds, issuing, immutability, verification privacy, revocation, and integrity failure. They do not substitute for deployed integration/load testing. The landing page and demo battery search were checked in the managed browser preview. Real-device mobile and WebMCP runtime testing remain outstanding. WebMCP search is feature-detected and optional.
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Local development server |
+| `pnpm build` | Build Worker and client output into `dist/` |
+| `pnpm start` | Serve the built Worker locally via Wrangler |
+| `pnpm lint` | ESLint |
+| `pnpm db:generate` | Generate a Drizzle migration after editing `db/schema.ts` |
 
-Before a public commercial launch, complete browser/device acceptance testing, real D1 operational tests, backup/restore and monitoring arrangements, threat review, and the scientific validation above. Workspace listing currently returns the newest 2,000 records per account.
+No application API keys are required. D1 and R2 are reached through the logical
+`DB` and `BUCKET` bindings declared in `.openai/hosting.json`, which
+`vite.config.ts` reads at build time.
 
-## Evidence collection update (v0.2)
+## Project layout
 
-New test saves require actual charge/discharge rates, pack voltage limits, rest time, rig ID, calibration date, 2–20 repeated capacities, and a report belonging to the same battery/account. Repeated capacity mean must match the measured capacity within 0.1 Ah. These are explicit pilot completeness checks, not scientifically validated acceptance criteria. Grade thresholds have not changed.
+```
+app/              Routes, pages, and API handlers
+  api/            account, reports, verify, workspace endpoints
+  certificate/    Certificate view and print layout
+  verify/         Public verification
+build/            Vite plugin for the hosting platform
+components/ui/    Shared UI primitives
+db/               Drizzle client and schema
+drizzle/          Generated SQL migrations and snapshots
+lib/              Grading, storage, demo data, helpers
+scripts/          Install, environment, and build tooling
+tests/            Node test suites
+```
 
-New issuance requires complete saved evidence and 10–1500-character review notes. The certificate snapshot freezes the selected report fingerprint, reviewer identity, test conditions, and repeat summary. Public verification exposes a limited numerical test summary; original reports, reviewer identity/notes, and equipment details are only returned to the record owner. Existing issued snapshots are preserved as legacy records.
+## Routes
 
-PDF upload accepts a PDF content type and magic header, streams with a 10 MB cap, stores files under unique object keys, and exposes downloads only to the owner as attachments. This checks format, not full PDF validity or malware. Uploaded reports are immutable; issue-time evidence remains stable. Storage failures retain form input and present retry guidance.
+| Route | Access |
+| --- | --- |
+| `/` | Public landing page |
+| `/signin`, `/signup` | ChatGPT-backed authentication and profile setup |
+| `/dashboard` | Battery workspace; requires a trusted identity |
+| `/account` | Edit your own profile |
+| `/demo?account=…` | Read-only sample personas: `fleet-manager`, `lab-reviewer`, `certificate-auditor` |
+| `/certificate/:id` | Issued certificate view and print layout |
+| `/verify` | Unauthenticated certificate verification |
 
-Research references: Manthiram (2017), DOI 10.1021/acscentsci.7b00288; Dai & Cai (2022), DOI 10.1038/s43246-022-00286-8. These inform chemistry/reproducibility context, not the provisional numeric grade bands. The ScienceDirect paper remains unreviewed pending access to its full text.
+`/api/account` supports GET, POST (idempotent creation) and PATCH (self-only).
+Request bodies cannot set email, owner ID, or roles — email is always read from
+trusted identity headers.
 
-## Sign-in, sign-up, and demo access
+## Authentication model
 
-`/signin` uses dispatch-owned ChatGPT authentication. `/signup` first verifies that identity and then persists a CertiCell profile (name, optional company). `/account` edits the signed-in user's profile; the email is always read from trusted identity headers. Profiles do not grant organization membership or broader site access. The root route presents the landing page; `/dashboard` requires a trusted ChatGPT identity and opens the battery workspace. Existing signed-in users retain access to their battery records before completing profile setup.
+Requests are authenticated by ChatGPT identity headers supplied by the hosting
+dispatcher. **Never trust arbitrary identity headers outside that deployment
+boundary.** A self-hosted deployment must put a trusted authentication proxy in
+front of the authenticated routes first.
 
-`/api/account` supports authenticated GET, POST (idempotent creation), and PATCH (self-only edit). Request bodies cannot set email, owner ID, or roles. Site-level private access is unchanged; anonymous external visitors may encounter the platform's sign-in/access gate before these pages.
+Each signed-in account owns a separate workspace. There is no organization
+membership or multi-reviewer role model in this version.
 
-Three read-only demos are available at `/demo?account=fleet-manager`, `/demo?account=lab-reviewer`, and `/demo?account=certificate-auditor`. These are sample persona entry screens, not separate authentication identities or password accounts. All use the same illustrative dataset. Demo pages do not fetch the live workspace, disable intake, and direct users to sign-in for real records. Existing API authorization remains in force.
+## Testing
 
-Run `node --experimental-strip-types tests/account.test.mjs` for account creation/editing, isolation, validation, trusted identity, repeat-registration behavior, and safe authentication redirects. The hosted ChatGPT login flow has not been exercised in a real browser during this update.
+```bash
+node --experimental-strip-types tests/grading.test.mjs
+node --experimental-strip-types tests/workflow.test.mjs
+node --experimental-strip-types tests/account.test.mjs
+pnpm exec tsc --noEmit
+pnpm build
+```
 
-## Landing page and UI update
+The workflow and account suites run the real route handlers against an
+in-memory SQLite adapter with a mocked trusted identity, covering ownership
+isolation, authentication, atomic intake rollback, holds, issuing,
+immutability, verification privacy, revocation, and integrity failure. They do
+not substitute for deployed integration or load testing.
 
-The landing page introduces the platform, evidence workflow, limitations, and three demo personas. Sign-in and profile completion lead to `/dashboard`. Responsive mobile navigation uses the shared Sheet primitive. The hero battery image is AI-generated conceptual artwork and is labeled as illustrative. Short-height sidebar layouts omit the decorative card to preserve navigation space.
+`pnpm lint` currently reports pre-existing errors (mostly
+`@typescript-eslint/no-explicit-any` and Next.js link/navigation rules) and is
+not yet part of the green baseline.
+
+## Security and data handling
+
+- Server-side authorization on every route, with prepared SQL and Zod input
+  validation.
+- Cross-site mutation requests are rejected; serials are unique per account.
+- Lab report PDFs are checked for content type and magic header, streamed with
+  a 10 MB cap, stored under unique R2 object keys, and downloadable only by the
+  owner as attachments. This validates format, not full PDF correctness or
+  malware.
+- Uploaded reports are immutable, so issue-time evidence stays stable.
+- Audit events are recorded per pack.
+- Workspace listing returns the newest 2,000 records per account.
+
+## Scope and limitations
+
+CertiCell is a pilot platform. It does not perform accredited certification and
+claims no UL, EN, EPR, or Battery Passport compliance. The grade bands and hold
+conditions above are illustrative, and the evidence-completeness checks are
+pilot checks rather than scientifically validated acceptance criteria.
+
+Commercial issuance would require chemistry-specific protocol validation,
+controlled lab testing, qualified independent reviewers, standards review, and
+accreditation where appropriate.
+
+CSV intake uses the documented schema. Direct CAN/Modbus ingestion and
+manufacturer BMS parsers need hardware-specific integrations. The marketplace,
+compliance reporting, billing, and insurer APIs on the roadmap are future
+phases.
+
+Research context: Manthiram (2017), [DOI 10.1021/acscentsci.7b00288](https://doi.org/10.1021/acscentsci.7b00288);
+Dai & Cai (2022), [DOI 10.1038/s43246-022-00286-8](https://doi.org/10.1038/s43246-022-00286-8).
+These inform chemistry and reproducibility context, not the provisional numeric
+grade bands.
+
+Before a public commercial launch: browser and device acceptance testing, real
+D1 operational tests, backup/restore and monitoring, and threat review remain
+outstanding, alongside the scientific validation above. Real-device mobile and
+WebMCP runtime testing have not been done; WebMCP search is feature-detected and
+optional. The hero battery image is AI-generated conceptual artwork and is
+labeled as illustrative in the UI.
